@@ -179,3 +179,25 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+.venv/
+__pycache__/
+*.pyc
+.env
+*.log
+models/*
+!models/.gitkeep
+data/*.tmp
+
+data/browser_profile/
+
+# NEXUS final secrets/data
+data/google_credentials.json
+data/google_token.json
+data/browser_profile/
+data/nexus_screen.png
+.env
+
+data/google_gmail_token.json
+
+data/google_tasks_token.json

@@ -1,0 +1,8 @@
+{
+    "allowed_processes": [
+        "spotify.exe",
+        "opera.exe",
+        "discord.exe",
+        "notepad.exe"
+    ]
+}

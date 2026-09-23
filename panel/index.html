@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEXUS</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <div class="background">
+        <div class="nebula nebula-blue"></div>
+        <div class="nebula nebula-purple"></div>
+        <div class="grid"></div>
+        <div class="scanline"></div>
+    </div>
+
+    <header class="topbar">
+
+        <div class="brand">
+            <div class="brand-symbol">N</div>
+
+            <div>
+                <div class="brand-name">NEXUS</div>
+                <div class="brand-subtitle">CONTROL INTERFACE</div>
+            </div>
+        </div>
+
+        <div class="clock-area">
+            <span class="connection-dot"></span>
+            <span id="connectionStatus">CORE</span>
+            <span class="separator">•</span>
+            <span id="clock">00:00:00</span>
+        </div>
+
+    </header>
+
+
+    <main class="dashboard">
+
+        <!-- HARDWARE -->
+
+        <section class="panel hardware-panel">
+
+            <div class="panel-title">
+                <span>◈</span>
+                HARDWARE
+            </div>
+
+            <div class="hardware-item">
+                <div class="hardware-header">
+                    <span>CPU</span>
+                    <strong id="cpuValue">--%</strong>
+                </div>
+
+                <div class="progress">
+                    <div id="cpuBar"></div>
+                </div>
+            </div>
+
+
+            <div class="hardware-item">
+                <div class="hardware-header">
+                    <span>RAM</span>
+                    <strong id="ramValue">--%</strong>
+                </div>
+
+                <div class="progress">
+                    <div id="ramBar"></div>
+                </div>
+            </div>
+
+
+            <div class="hardware-item">
+                <div class="hardware-header">
+                    <span>GPU</span>
+                    <strong id="gpuValue">--%</strong>
+                </div>
+
+                <div class="progress">
+                    <div id="gpuBar"></div>
+                </div>
+            </div>
+
+
+            <div class="hardware-extra">
+
+                <div>
+                    <span>DISCO</span>
+                    <strong id="diskValue">--%</strong>
+                </div>
+
+                <div>
+                    <span>DOWNLOAD</span>
+                    <strong id="networkDown">--</strong>
+                </div>
+
+                <div>
+                    <span>UPLOAD</span>
+                    <strong id="networkUp">--</strong>
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- NEXUS CORE -->
+
+        <section class="panel core-panel">
+
+            <div class="panel-title">
+                <span>◇</span>
+                NEXUS CORE
+            </div>
+
+            <div class="core-row">
+                <span>VERSION</span>
+                <strong id="version">--</strong>
+            </div>
+
+            <div class="core-row">
+                <span>AI</span>
+                <strong id="aiProvider">--</strong>
+            </div>
+
+            <div class="core-row">
+                <span>SKILLS</span>
+                <strong id="skillsValue">--</strong>
+            </div>
+
+            <div class="core-row">
+                <span>UPTIME</span>
+                <strong id="uptime">--</strong>
+            </div>
+
+        </section>
+
+
+        <!-- ORB -->
+
+        <section class="orb-area">
+
+            <div class="orb-container">
+
+                <div class="orbit orbit-1"></div>
+                <div class="orbit orbit-2"></div>
+                <div class="orbit orbit-3"></div>
+
+                <div class="orb">
+
+                    <div class="orb-inner"></div>
+
+                    <div class="orb-letter">
+                        N
+                    </div>
+
+                </div>
+
+            </div>
+
+            <div class="orb-status">
+
+                <div id="stateLabel">
+                    OFFLINE
+                </div>
+
+                <div id="stateDescription">
+                    Aguardando conexão
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- INTERAÇÕES -->
+
+        <section class="panel interactions-panel">
+
+            <div class="panel-title">
+
+                <span>▱</span>
+
+                ÚLTIMAS INTERAÇÕES
+
+                <button
+                    id="clearInteractions"
+                    class="clear-button"
+                >
+                    ×
+                </button>
+
+            </div>
+
+
+            <div
+                id="interactions"
+                class="interactions-list"
+            >
+
+                <div class="empty-interactions">
+                    Nenhuma interação registrada.
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- CONTROLES -->
+
+        <div class="controls">
+
+            <button
+                id="lockButton"
+                class="control-button"
+            >
+
+                <span>⌁</span>
+
+                <small>LOCK</small>
+
+            </button>
+
+
+            <button
+                id="refreshButton"
+                class="control-button"
+            >
+
+                <span>↻</span>
+
+                <small>REFRESH</small>
+
+            </button>
+
+
+            <button
+                id="configButton"
+                class="control-button"
+            >
+
+                <span>⚙</span>
+
+                <small>CONFIG</small>
+
+            </button>
+
+
+            <button
+                id="micButton"
+                class="control-button"
+            >
+
+                <span>◉</span>
+
+                <small>MIC</small>
+
+            </button>
+
+        </div>
+
+    </main>
+
+
+    <div
+        id="toast"
+        class="toast"
+    ></div>
+
+
+    <script src="script.js"></script>
+
+</body>
+</html>

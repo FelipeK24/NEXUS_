@@ -1,0 +1,14 @@
+{
+    "spotify": {
+        "path": "%APPDATA%\\Spotify\\Spotify.exe",
+        "process": "Spotify.exe"
+    },
+    "opera": {
+        "path": "%LOCALAPPDATA%\\Programs\\Opera GX\\opera.exe",
+        "process": "opera.exe"
+    },
+    "notepad": {
+        "path": "%WINDIR%\\System32\\notepad.exe",
+        "process": "notepad.exe"
+    }
+}

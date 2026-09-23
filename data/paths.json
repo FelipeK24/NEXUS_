@@ -1,0 +1,9 @@
+{
+    "desktop": "%USERPROFILE%\\Desktop",
+    "documents": "%USERPROFILE%\\Documents",
+    "downloads": "%USERPROFILE%\\Downloads",
+    "pictures": "%USERPROFILE%\\Pictures",
+    "videos": "%USERPROFILE%\\Videos",
+    "music": "%USERPROFILE%\\Music",
+    "project": "%USERPROFILE%\\Desktop\\JARVIS-FINAL"
+}
