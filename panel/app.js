@@ -1,993 +1,469 @@
-const API_BASE = window.NEXUS_API_URL || "";
-const API_TOKEN = window.NEXUS_API_TOKEN || "";
+const $ = (selector) => document.querySelector(selector);
 
+const statusPill = $("#status-pill");
+const lockLabel = $("#lock-label");
+const assistantState = $("#assistant-state");
+const provider = $("#provider");
+const providerCard = $("#provider-card");
+const cpu = $("#cpu");
+const ram = $("#ram");
+const disk = $("#disk");
+const network = $("#network");
+const lastUser = $("#last-user");
+const lastResponse = $("#last-response");
+const intent = $("#intent");
+const commandInput = $("#command-input");
+const voiceButton = $("#voice-button");
+const voiceStatus = $("#voice-status");
+const lockButton = $("#lock-button");
+const confirmationBox = $("#confirmation-box");
+const confirmationText = $("#confirmation-text");
+const authBox = $("#auth-box");
+const panelTokenInput = $("#panel-token");
+const authError = $("#auth-error");
+const activityList = $("#activity-list");
+const historyPanel = $("#history-panel");
+const historyList = $("#history-list");
+const skillsPanel = $("#skills-panel");
+const skillsList = $("#skills-list");
+const installButton = $("#install-button");
+const installHint = $("#install-hint");
+let eventCursor = Number(sessionStorage.getItem("nexus-event-cursor") || 0);
+let pendingInstallPrompt = null;
+let websocketConnected = false;
+let activeSocket = null;
+let activeSocketUrl = "";
+let activeSocketToken = "";
+const seenEventIds = new Set();
 
-const state = {
-    connected: false,
-    mode: "offline",
-    locked: false,
-    interactions: []
-};
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let voiceRecognition = null;
+let voiceActive = false;
+let voiceHadResult = false;
 
-
-const orbArea =
-    document.querySelector(".orb-area");
-
-
-const stateLabel =
-    document.getElementById("stateLabel");
-
-
-const stateDescription =
-    document.getElementById("stateDescription");
-
-
-const connectionStatus =
-    document.getElementById("connectionStatus");
-
-
-const connectionDot =
-    document.querySelector(".connection-dot");
-
-
-const interactions =
-    document.getElementById("interactions");
-
-
-/* HEADERS */
-
-function getHeaders() {
-
-    const headers = {
-        "Content-Type": "application/json"
-    };
-
-
-    if (API_TOKEN) {
-
-        headers["X-NEXUS-TOKEN"] =
-            API_TOKEN;
-
-    }
-
-
-    return headers;
+function title(text) {
+    return String(text || "--").toUpperCase();
 }
 
+function render(data) {
+    const locked = Boolean(data.locked);
+    const mode = data.mode || "--";
+    const ia = data.last_provider || "none";
 
-/* MODO DA ORB */
+    statusPill.textContent = title(mode);
+    lockLabel.textContent = locked ? "LOCK ATIVO" : "UNLOCK";
+    lockLabel.style.color = locked ? "#ff6b7a" : "#77f3c4";
+    assistantState.textContent = locked ? "NEXUS protegido" : "NEXUS desbloqueado";
+    provider.textContent = `IA atual: ${title(ia)}`;
+    providerCard.textContent = title(ia);
+    cpu.textContent = `${Math.round(data.cpu || 0)}%`;
+    ram.textContent = `${Math.round(data.ram || 0)}%`;
+    disk.textContent = data.disk == null ? "--%" : `${Math.round(data.disk)}%`;
+    network.textContent = `↓ ${Number(data.network_recv_kbps || 0).toFixed(1)} KB/s · ↑ ${Number(data.network_sent_kbps || 0).toFixed(1)} KB/s`;
+    lastUser.textContent = data.last_user || "Nenhum comando ainda.";
+    lastResponse.textContent = data.last_response || "Nenhuma resposta ainda.";
+    intent.textContent = data.last_intent || "--";
+    lockButton.textContent = locked ? "UNLOCK" : "LOCK";
 
-function setMode(mode, description = "") {
-
-    orbArea.classList.remove(
-        "state-offline",
-        "state-online",
-        "state-thinking",
-        "state-speaking"
-    );
-
-
-    orbArea.classList.add(
-        `state-${mode}`
-    );
-
-
-    state.mode = mode;
-
-
-    const labels = {
-
-        offline: "OFFLINE",
-
-        online: "ONLINE",
-
-        thinking: "PENSANDO",
-
-        speaking: "FALANDO"
-
-    };
-
-
-    stateLabel.textContent =
-        labels[mode] || "NEXUS";
-
-
-    stateDescription.textContent =
-        description;
-
-
-    const colors = {
-
-        offline: "#777D86",
-
-        online: "#007CC4",
-
-        thinking: "#B98A32",
-
-        speaking: "#8D45D8"
-
-    };
-
-
-    const color =
-        colors[mode] || colors.offline;
-
-
-    connectionDot.style.background =
-        color;
-
-
-    connectionDot.style.boxShadow =
-        `0 0 10px ${color}`;
-
+    if (data.confirmation_pending) {
+        confirmationBox.hidden = false;
+        confirmationText.textContent = data.confirmation_description || "Confirme a ação solicitada.";
+    } else {
+        confirmationBox.hidden = true;
+    }
+    configureWebSocket(data);
 }
 
-
-/* CONEXÃO */
-
-function setConnected(connected) {
-
-    state.connected =
-        connected;
-
-
-    if (!connected) {
-
-        connectionStatus.textContent =
-            "CORE OFFLINE";
-
-
-        setMode(
-            "offline",
-            "Aguardando conexão"
-        );
-
-        return;
-
-    }
-
-
-    connectionStatus.textContent =
-        "CORE CONNECTED";
-
-
-    if (state.mode === "offline") {
-
-        setMode(
-            "online",
-            "Sistema pronto"
-        );
-
-    }
-
-}
-
-
-/* HARDWARE */
-
-function setMetric(
-    value,
-    valueId,
-    barId
-) {
-
-    const number =
-        Number(value);
-
-
-    if (!Number.isFinite(number)) {
+function configureWebSocket(data) {
+    if (!data.websocket_enabled) {
+        if (activeSocket) activeSocket.close();
+        activeSocket = null;
+        activeSocketUrl = "";
+        websocketConnected = false;
         return;
     }
 
+    const token = sessionStorage.getItem("nexus-panel-token") || "";
+    const url = data.websocket_public_url || `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.hostname}:${data.websocket_port}`;
+    if (activeSocket && activeSocketUrl === url && activeSocketToken === token && activeSocket.readyState < WebSocket.CLOSING) return;
+    if (activeSocket) activeSocket.close();
+    activeSocketUrl = url;
+    activeSocketToken = token;
+    websocketConnected = false;
 
-    const safe =
-        Math.max(
-            0,
-            Math.min(100, number)
-        );
-
-
-    document.getElementById(
-        valueId
-    ).textContent =
-        `${Math.round(safe)}%`;
-
-
-    document.getElementById(
-        barId
-    ).style.width =
-        `${safe}%`;
-
+    try {
+        const socket = new WebSocket(url);
+        activeSocket = socket;
+        socket.onopen = () => socket.send(JSON.stringify({ type: "auth", token }));
+        socket.onmessage = (message) => {
+            let data;
+            try { data = JSON.parse(message.data); } catch { return; }
+            if (data.kind === "ready") {
+                websocketConnected = true;
+                if (sessionStorage.getItem("nexus-event-stream") !== data.stream_id) {
+                    eventCursor = 0;
+                    seenEventIds.clear();
+                    activityList.replaceChildren();
+                    sessionStorage.setItem("nexus-event-cursor", "0");
+                }
+                sessionStorage.setItem("nexus-event-stream", data.stream_id || "");
+                refreshEvents(true);
+            } else if (data.kind === "event" && data.event) {
+                addActivity(data.event);
+                eventCursor = Math.max(eventCursor, Number(data.event.id) || 0);
+                sessionStorage.setItem("nexus-event-cursor", String(eventCursor));
+            }
+        };
+        socket.onclose = () => {
+            if (activeSocket === socket) {
+                activeSocket = null;
+                websocketConnected = false;
+            }
+        };
+        socket.onerror = () => socket.close();
+    } catch (error) {
+        websocketConnected = false;
+    }
 }
 
-
-function updateHardware(data) {
-
-    if (!data) {
-        return;
-    }
-
-
-    setMetric(
-        data.cpu ??
-        data.cpu_percent,
-
-        "cpuValue",
-
-        "cpuBar"
-    );
-
-
-    setMetric(
-        data.ram ??
-        data.ram_percent,
-
-        "ramValue",
-
-        "ramBar"
-    );
-
-
-    setMetric(
-        data.gpu ??
-        data.gpu_percent,
-
-        "gpuValue",
-
-        "gpuBar"
-    );
-
-
-    if (data.disk != null) {
-
-        document.getElementById(
-            "diskValue"
-        ).textContent =
-            `${Math.round(
-                Number(data.disk)
-            )}%`;
-
-    }
-
-
-    if (data.network_down != null) {
-
-        document.getElementById(
-            "networkDown"
-        ).textContent =
-            formatRate(
-                data.network_down
-            );
-
-    }
-
-
-    if (data.network_up != null) {
-
-        document.getElementById(
-            "networkUp"
-        ).textContent =
-            formatRate(
-                data.network_up
-            );
-
-    }
-
-}
-
-
-/* VELOCIDADE DE REDE */
-
-function formatRate(value) {
-
-    const number =
-        Number(value);
-
-
-    if (!Number.isFinite(number)) {
-        return "--";
-    }
-
-
-    if (
-        number >=
-        1024 * 1024
-    ) {
-
-        return (
-            (number /
-                1024 /
-                1024
-            ).toFixed(1)
-            + " MB/s"
-        );
-
-    }
-
-
-    if (
-        number >= 1024
-    ) {
-
-        return (
-            (number /
-                1024
-            ).toFixed(1)
-            + " KB/s"
-        );
-
-    }
-
-
-    return (
-        number.toFixed(0)
-        + " B/s"
-    );
-
-}
-
-
-/* CORE */
-
-function updateCore(data) {
-
-    if (!data) {
-        return;
-    }
-
-
-    document.getElementById(
-        "version"
-    ).textContent =
-        data.version ??
-        data.nexus_version ??
-        "--";
-
-
-    document.getElementById(
-        "aiProvider"
-    ).textContent =
-        data.ai ??
-        data.provider ??
-        data.current_ai ??
-        "--";
-
-
-    document.getElementById(
-        "skillsValue"
-    ).textContent =
-        data.skills ??
-        data.skills_count ??
-        "--";
-
-
-    document.getElementById(
-        "uptime"
-    ).textContent =
-        data.uptime ??
-        "--";
-
-
-    if (
-        typeof data.locked ===
-        "boolean"
-    ) {
-
-        state.locked =
-            data.locked;
-
-        updateLockButton();
-
-    }
-
-
-    if (
-        [
-            "online",
-            "thinking",
-            "speaking",
-            "offline"
-        ].includes(data.state)
-    ) {
-
-        setMode(
-            data.state,
-
-            data.state ===
-            "online"
-                ? "Sistema pronto"
-                : ""
-        );
-
-    }
-
-}
-
-
-/* INTERAÇÕES */
-
-function renderInteractions() {
-
-    if (
-        state.interactions.length === 0
-    ) {
-
-        interactions.innerHTML = `
-            <div class="empty-interactions">
-                Nenhuma interação registrada.
-            </div>
-        `;
-
-        return;
-
-    }
-
-
-    interactions.innerHTML =
-        state.interactions
-            .map(item => `
-
-                <div class="interaction">
-
-                    <div class="interaction-time">
-                        ${escapeHtml(
-                            item.time ||
-                            "--:--"
-                        )}
-                    </div>
-
-                    <div class="interaction-command">
-                        ${escapeHtml(
-                            item.command ||
-                            ""
-                        )}
-                    </div>
-
-                    <div class="interaction-response">
-                        ${escapeHtml(
-                            item.response ||
-                            ""
-                        )}
-                    </div>
-
-                </div>
-
-            `)
-            .join("");
-
-}
-
-
-function addInteraction(
-    command,
-    response
-) {
-
-    state.interactions.unshift({
-
-        time:
-            new Date()
-                .toLocaleTimeString(
-                    "pt-BR",
-                    {
-                        hour: "2-digit",
-                        minute: "2-digit"
-                    }
-                ),
-
-        command:
-            command,
-
-        response:
-            response
-
+async function request(path, options = {}) {
+    const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+    const token = sessionStorage.getItem("nexus-panel-token");
+    if (token) headers["X-NEXUS-TOKEN"] = token;
+    const response = await fetch(path, {
+        ...options,
+        headers,
     });
 
-
-    state.interactions =
-        state.interactions.slice(
-            0,
-            40
-        );
-
-
-    renderInteractions();
-
-}
-
-
-/* SEGURANÇA CONTRA HTML */
-
-function escapeHtml(value) {
-
-    return String(value)
-
-        .replaceAll(
-            "&",
-            "&amp;"
-        )
-
-        .replaceAll(
-            "<",
-            "&lt;"
-        )
-
-        .replaceAll(
-            ">",
-            "&gt;"
-        )
-
-        .replaceAll(
-            '"',
-            "&quot;"
-        )
-
-        .replaceAll(
-            "'",
-            "&#039;"
-        );
-
-}
-
-
-/* API */
-
-async function api(
-    path,
-    options = {}
-) {
-
-    const response =
-        await fetch(
-            `${API_BASE}${path}`,
-            {
-
-                ...options,
-
-                headers: {
-
-                    ...getHeaders(),
-
-                    ...(options.headers || {})
-
-                }
-
-            }
-        );
-
-
+    const data = await response.json();
     if (!response.ok) {
-
-        throw new Error(
-            `HTTP ${response.status}`
-        );
-
+        const error = new Error(data.error || "Erro na requisição.");
+        error.status = response.status;
+        throw error;
     }
-
-
-    const text =
-        await response.text();
-
-
-    if (!text) {
-        return {};
-    }
-
-
-    try {
-
-        return JSON.parse(text);
-
-    } catch {
-
-        return {
-            response: text
-        };
-
-    }
-
+    return data;
 }
 
-
-/* ATUALIZAR STATUS */
-
-async function refreshStatus() {
-
+async function refresh() {
     try {
-
-        const data =
-            await api(
-                "/api/status"
-            );
-
-
-        setConnected(true);
-
-
-        updateHardware(
-            data.hardware ||
-            data.system ||
-            data
-        );
-
-
-        updateCore(
-            data.core ||
-            data
-        );
-
-
-        if (
-            Array.isArray(
-                data.interactions
-            )
-        ) {
-
-            state.interactions =
-                data.interactions
-                    .slice(0, 40);
-
-            renderInteractions();
-
-        }
-
-
+        render(await request("/api/status"));
     } catch (error) {
-
-        setConnected(false);
-
+        if (error.status === 401) {
+            authBox.hidden = false;
+            authError.textContent = "Informe o token configurado em PANEL_TOKEN.";
+            return;
+        }
+        statusPill.textContent = "OFFLINE";
+        assistantState.textContent = error.message;
     }
-
 }
 
+function describeEvent(event) {
+    const data = event.data || {};
+    if (event.type === "command.started") return `Iniciando ${data.intent || "comando"} (${data.index}/${data.total})`;
+    if (event.type === "command.completed") {
+        const result = data.success ? "concluído" : "falhou";
+        return `${data.intent || "Comando"} ${result} · ${data.duration_ms ?? 0} ms`;
+    }
+    if (event.type === "pipeline.completed") {
+        return `Pipeline ${data.success ? "concluído" : "com falhas"} · ${data.commands_executed}/${data.total_commands} ações`;
+    }
+    if (event.type === "pipeline.failed") return `Planner falhou na etapa ${data.stage || "desconhecida"}`;
+    if (event.type === "security.lock_changed") return data.locked ? "NEXUS bloqueado" : "NEXUS desbloqueado";
+    if (event.type === "assistant.state_changed") {
+        const detail = [data.mode, data.intent].filter(Boolean).join(" · ");
+        return `Estado atualizado${detail ? `: ${detail}` : ""}`;
+    }
+    return event.type;
+}
 
-/* ENVIAR COMANDO */
+function addActivity(event) {
+    const eventKey = `${sessionStorage.getItem("nexus-event-stream") || ""}:${event.id}`;
+    if (event.id != null && seenEventIds.has(eventKey)) return;
+    if (event.id != null) {
+        seenEventIds.add(eventKey);
+        if (seenEventIds.size > 300) seenEventIds.delete(seenEventIds.values().next().value);
+    }
+    const empty = activityList.querySelector(".empty-activity");
+    if (empty) empty.remove();
+    const item = document.createElement("li");
+    const label = document.createElement("span");
+    const time = document.createElement("time");
+    label.textContent = describeEvent(event);
+    time.textContent = new Date(event.timestamp).toLocaleTimeString();
+    item.append(label, time);
+    activityList.prepend(item);
+    while (activityList.children.length > 30) activityList.lastElementChild.remove();
+}
 
-async function sendCommand(
-    text
-) {
+async function refreshEvents(force = false) {
+    if (websocketConnected && !force) return;
+    try {
+        let data = await request(`/api/events?after_id=${eventCursor}&limit=50`);
+        const previousStream = sessionStorage.getItem("nexus-event-stream");
+        if (previousStream !== data.stream_id) {
+            eventCursor = 0;
+            activityList.replaceChildren();
+            data = await request("/api/events?after_id=0&limit=50");
+        }
+        sessionStorage.setItem("nexus-event-stream", data.stream_id || "");
+        for (const event of data.events || []) {
+            addActivity(event);
+            eventCursor = Math.max(eventCursor, event.id);
+        }
+        eventCursor = Math.max(eventCursor, data.next_id || 0);
+        sessionStorage.setItem("nexus-event-cursor", String(eventCursor));
+    } catch (error) {
+        if (error.status === 401) {
+            authBox.hidden = false;
+            authError.textContent = "Informe o token configurado em PANEL_TOKEN.";
+        }
+    }
+}
 
-    if (!text.trim()) {
+function renderHistory(turns) {
+    historyList.replaceChildren();
+    if (!turns.length) {
+        const empty = document.createElement("li");
+        empty.className = "empty-activity";
+        empty.textContent = "Nenhuma conversa recente.";
+        historyList.append(empty);
         return;
     }
 
-
-    try {
-
-        setMode(
-            "thinking",
-            "Processando comando"
-        );
-
-
-        const data =
-            await api(
-                "/api/command",
-                {
-
-                    method: "POST",
-
-                    body:
-                        JSON.stringify({
-                            text: text
-                        })
-
-                }
-            );
-
-
-        const response =
-            data.response ||
-            data.message ||
-            "Comando processado.";
-
-
-        addInteraction(
-            text,
-            response
-        );
-
-
-        setMode(
-            "speaking",
-            "NEXUS respondendo"
-        );
-
-
-        setTimeout(
-            () => {
-
-                if (
-                    state.connected
-                ) {
-
-                    setMode(
-                        "online",
-                        "Sistema pronto"
-                    );
-
-                }
-
-            },
-            1500
-        );
-
-
-    } catch (error) {
-
-        addInteraction(
-            text,
-            "Não foi possível comunicar com o NEXUS Core."
-        );
-
-
-        setMode(
-            "offline",
-            "Falha na comunicação"
-        );
-
+    for (const turn of [...turns].reverse()) {
+        const item = document.createElement("li");
+        const user = document.createElement("p");
+        const assistant = document.createElement("p");
+        const reuse = document.createElement("button");
+        user.textContent = `VOCÊ: ${turn.user || ""}`;
+        assistant.textContent = `NEXUS: ${turn.assistant || ""}`;
+        reuse.type = "button";
+        reuse.className = "history-reuse";
+        reuse.textContent = "USAR DE NOVO";
+        reuse.addEventListener("click", () => {
+            commandInput.value = turn.user || "";
+            commandInput.focus();
+            commandInput.scrollIntoView({ behavior: "smooth", block: "center" });
+        });
+        item.append(user, assistant, reuse);
+        historyList.append(item);
     }
-
 }
 
+async function refreshHistory() {
+    try {
+        const data = await request("/api/history");
+        renderHistory(data.history || []);
+    } catch (error) {
+        historyList.textContent = error.message;
+    }
+}
 
-/* LOCK */
+async function refreshSkills() {
+    try {
+        const data = await request("/api/skills");
+        skillsList.replaceChildren();
+        for (const skill of data.skills || []) {
+            const item = document.createElement("li");
+            const name = document.createElement("code");
+            const description = document.createElement("span");
+            name.textContent = skill.intent || "";
+            description.textContent = skill.description || "";
+            item.append(name, description);
+            skillsList.append(item);
+        }
+        if (!skillsList.children.length) skillsList.textContent = "Nenhuma Skill disponível.";
+    } catch (error) {
+        skillsList.textContent = error.message;
+    }
+}
+
+async function connectPanel() {
+    const token = panelTokenInput.value.trim();
+    if (!token) return;
+    sessionStorage.setItem("nexus-panel-token", token);
+    try {
+        render(await request("/api/status"));
+        authBox.hidden = true;
+        authError.textContent = "";
+        panelTokenInput.value = "";
+    } catch (error) {
+        sessionStorage.removeItem("nexus-panel-token");
+        authError.textContent = error.status === 401 ? "Token inválido." : error.message;
+    }
+}
+
+async function sendCommand() {
+    const text = commandInput.value.trim();
+    if (!text) return;
+
+    lastUser.textContent = text;
+    try {
+        const data = await request("/api/command", {
+            method: "POST",
+            body: JSON.stringify({ text }),
+        });
+        render(data.status);
+        if (historyPanel.open) refreshHistory();
+        commandInput.value = "";
+    } catch (error) {
+        lastResponse.textContent = error.message;
+    }
+}
+
+historyPanel.addEventListener("toggle", () => {
+    if (historyPanel.open) refreshHistory();
+});
+skillsPanel.addEventListener("toggle", () => {
+    if (skillsPanel.open) refreshSkills();
+});
+
+$(".quick-commands").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-command]");
+    if (!button) return;
+    commandInput.value = button.dataset.command || "";
+    commandInput.focus();
+});
+
+async function resolveConfirmation(approved) {
+    try {
+        render(await request("/api/confirm", {
+            method: "POST",
+            body: JSON.stringify({ approved }),
+        }));
+    } catch (error) {
+        lastResponse.textContent = error.message;
+    }
+}
 
 async function toggleLock() {
-
     try {
-
-        const endpoint =
-            state.locked
-                ? "/api/unlock"
-                : "/api/lock";
-
-
-        await api(
-            endpoint,
-            {
-                method: "POST"
-            }
-        );
-
-
-        state.locked =
-            !state.locked;
-
-
-        updateLockButton();
-
-
-        showToast(
-            state.locked
-                ? "NEXUS bloqueado."
-                : "NEXUS desbloqueado."
-        );
-
-
-    } catch {
-
-        showToast(
-            "Não foi possível alterar o LOCK."
-        );
-
+        render(await request("/api/toggle", { method: "POST", body: "{}" }));
+    } catch (error) {
+        lastResponse.textContent = error.message;
     }
-
 }
 
-
-/* BOTÃO LOCK */
-
-function updateLockButton() {
-
-    const button =
-        document.getElementById(
-            "lockButton"
-        );
-
-
-    button.classList.toggle(
-        "active",
-        state.locked
-    );
-
-
-    button.querySelector(
-        "span"
-    ).textContent =
-        state.locked
-            ? "◆"
-            : "⌁";
-
-
-    button.querySelector(
-        "small"
-    ).textContent =
-        state.locked
-            ? "UNLOCK"
-            : "LOCK";
-
+function setVoiceButton(active) {
+    voiceButton.setAttribute("aria-pressed", String(active));
+    voiceButton.textContent = active ? "■ PARAR" : "🎙️ FALAR";
+    voiceButton.setAttribute("aria-label", active ? "Parar reconhecimento de voz" : "Falar comando");
+    voiceButton.classList.toggle("listening", active);
 }
 
+if (!window.isSecureContext) {
+    voiceButton.disabled = true;
+    voiceStatus.textContent = "A entrada por voz precisa de HTTPS ou localhost.";
+} else if (!SpeechRecognition) {
+    voiceButton.disabled = true;
+    voiceStatus.textContent = "Este navegador não oferece reconhecimento de voz. Digite o comando.";
+} else {
+    voiceRecognition = new SpeechRecognition();
+    voiceRecognition.lang = "pt-BR";
+    voiceRecognition.continuous = false;
+    voiceRecognition.interimResults = false;
+    voiceRecognition.maxAlternatives = 1;
 
-/* NOTIFICAÇÃO */
+    voiceRecognition.onstart = () => {
+        voiceActive = true;
+        voiceHadResult = false;
+        setVoiceButton(true);
+        voiceStatus.textContent = "Ouvindo… fale seu comando.";
+    };
 
-function showToast(
-    message
-) {
+    voiceRecognition.onresult = (event) => {
+        const transcript = event.results?.[event.resultIndex]?.[0]?.transcript?.trim();
+        if (!transcript) return;
+        const existing = commandInput.value.trim();
+        commandInput.value = existing ? `${existing} ${transcript}` : transcript;
+        voiceHadResult = true;
+        commandInput.focus();
+        voiceStatus.textContent = "Comando transcrito. Revise antes de executar.";
+    };
 
-    const toast =
-        document.getElementById(
-            "toast"
-        );
+    voiceRecognition.onerror = (event) => {
+        const messages = {
+            "not-allowed": "Permita o acesso ao microfone nas configurações do navegador.",
+            "service-not-allowed": "O navegador bloqueou o serviço de reconhecimento de voz.",
+            "audio-capture": "Não encontrei um microfone disponível.",
+            "no-speech": "Não detectei fala. Toque no microfone para tentar novamente.",
+            network: "O reconhecimento de voz está indisponível pela rede.",
+        };
+        if (event.error !== "aborted") {
+            voiceStatus.textContent = messages[event.error] || "Não consegui reconhecer a fala. Tente novamente ou digite.";
+        }
+    };
 
+    voiceRecognition.onend = () => {
+        voiceActive = false;
+        setVoiceButton(false);
+        if (!voiceHadResult && voiceStatus.textContent === "Ouvindo… fale seu comando.") {
+            voiceStatus.textContent = "Toque no microfone e fale seu comando.";
+        }
+    };
 
-    toast.textContent =
-        message;
-
-
-    toast.classList.add(
-        "show"
-    );
-
-
-    clearTimeout(
-        window.toastTimer
-    );
-
-
-    window.toastTimer =
-        setTimeout(
-            () => {
-
-                toast.classList.remove(
-                    "show"
-                );
-
-            },
-            2400
-        );
-
+    voiceButton.addEventListener("click", () => {
+        if (voiceActive) {
+            voiceRecognition.stop();
+            return;
+        }
+        try {
+            voiceRecognition.start();
+        } catch (error) {
+            voiceStatus.textContent = "Não consegui iniciar o microfone. Aguarde um instante e tente novamente.";
+        }
+    });
 }
 
+installButton.addEventListener("click", async () => {
+    if (!pendingInstallPrompt) return;
+    pendingInstallPrompt.prompt();
+    await pendingInstallPrompt.userChoice;
+    pendingInstallPrompt = null;
+    installButton.hidden = true;
+});
 
-/* RELÓGIO */
+window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    pendingInstallPrompt = event;
+    installButton.hidden = false;
+    installHint.hidden = true;
+});
 
-function updateClock() {
+window.addEventListener("appinstalled", () => {
+    pendingInstallPrompt = null;
+    installButton.hidden = true;
+    installHint.hidden = true;
+});
 
-    document.getElementById(
-        "clock"
-    ).textContent =
-
-        new Date()
-            .toLocaleTimeString(
-                "pt-BR"
-            );
-
+const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
+const isAppleMobile = /iPhone|iPad|iPod/.test(window.navigator.userAgent);
+if (!isStandalone && isAppleMobile) {
+    installHint.textContent = "Para instalar, toque em Compartilhar e escolha Adicionar à Tela de Início.";
+    installHint.hidden = false;
 }
 
+if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw.js").catch((error) => {
+        console.warn("Não foi possível registrar o modo offline do NEXUS.", error);
+    });
+}
 
-/* BOTÕES */
+$("#send-command").addEventListener("click", sendCommand);
+$("#connect-panel").addEventListener("click", connectPanel);
+panelTokenInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") connectPanel();
+});
+$("#refresh-button").addEventListener("click", refresh);
+lockButton.addEventListener("click", toggleLock);
+$("#confirm-yes").addEventListener("click", () => resolveConfirmation(true));
+$("#confirm-no").addEventListener("click", () => resolveConfirmation(false));
+commandInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") sendCommand();
+});
 
-
-/* REFRESH */
-
-document
-    .getElementById(
-        "refreshButton"
-    )
-    .addEventListener(
-        "click",
-        async () => {
-
-            await refreshStatus();
-
-            showToast(
-                "Painel atualizado."
-            );
-
-        }
-    );
-
-
-/* LOCK */
-
-document
-    .getElementById(
-        "lockButton"
-    )
-    .addEventListener(
-        "click",
-        toggleLock
-    );
-
-
-/* CONFIG */
-
-document
-    .getElementById(
-        "configButton"
-    )
-    .addEventListener(
-        "click",
-        () => {
-
-            showToast(
-                "Configurações do NEXUS."
-            );
-
-        }
-    );
-
-
-/* MICROFONE */
-
-document
-    .getElementById(
-        "micButton"
-    )
-    .addEventListener(
-        "click",
-        () => {
-
-            const button =
-                document.getElementById(
-                    "micButton"
-                );
-
-
-            button.classList.toggle(
-                "active"
-            );
-
-
-            showToast(
-                "Controle do microfone acionado."
-            );
-
-        }
-    );
-
-
-/* LIMPAR INTERAÇÕES */
-
-document
-    .getElementById(
-        "clearInteractions"
-    )
-    .addEventListener(
-        "click",
-        () => {
-
-            state.interactions = [];
-
-            renderInteractions();
-
-        }
-    );
-
-
-/* INICIALIZAÇÃO */
-
-updateLockButton();
-
-setMode(
-    "offline",
-    "Aguardando conexão"
-);
-
-updateClock();
-
-setInterval(
-    updateClock,
-    1000
-);
-
-
-refreshStatus();
-
-
-setInterval(
-    refreshStatus,
-    3000
-);
+refresh();
+refreshEvents();
+setInterval(refresh, 2500);
+setInterval(refreshEvents, 2000);

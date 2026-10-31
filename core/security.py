@@ -31,16 +31,7 @@ class SecurityManager:
         return self.locked
 
     def risk_level(self, command: Command) -> str:
-        if command.intent in {
-            "file_delete",
-            "email_send",
-            "email_reply",
-            "smart_home_action",
-            "clear_memory",
-            "calendar_delete",
-            "web_action",
-            "google_task_delete",
-        }:
+        if command.intent in {"file_delete", "email_send", "smart_home_action", "clear_memory", "calendar_delete", "web_action"}:
             return "high"
         if command.intent in {
             "file_move",
@@ -48,8 +39,6 @@ class SecurityManager:
             "close_application",
             "calendar_create",
             "task_delete",
-            "reminder_cancel",
-            "google_task_complete",
             "browser_click",
             "browser_type",
         }:
@@ -98,12 +87,7 @@ class SecurityManager:
         if command.intent == "file_delete":
             return f"Excluir o arquivo {p.get('path', 'informado')}?"
         if command.intent == "email_send":
-            return (
-                f"Enviar um e-mail para {p.get('to', 'o destinatário')} "
-                f"com assunto '{p.get('subject', 'sem assunto')}'?"
-            )
-        if command.intent == "email_reply":
-            return "Enviar a resposta para o e-mail selecionado?"
+            return "Enviar o e-mail solicitado?"
         if command.intent == "smart_home_action":
             return "Executar a ação de automação residencial?"
         if command.intent == "calendar_create":
@@ -112,12 +96,6 @@ class SecurityManager:
             return "Excluir o evento da agenda?"
         if command.intent == "task_delete":
             return f"Excluir a tarefa '{p.get('identifier', 'informada')}'?"
-        if command.intent == "google_task_delete":
-            return f"Excluir a tarefa do Google '{p.get('identifier', 'informada')}'?"
-        if command.intent == "reminder_cancel":
-            return f"Cancelar o lembrete '{p.get('identifier', 'informado')}'?"
-        if command.intent == "google_task_complete":
-            return f"Concluir a tarefa do Google '{p.get('identifier', 'informada')}'?"
         if command.intent == "web_action":
             return f"Executar a ação web '{p.get('action', 'informada')}' no elemento {p.get('selector', 'informado')}?"
         if command.intent == "browser_click":

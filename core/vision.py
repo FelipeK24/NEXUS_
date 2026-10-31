@@ -9,7 +9,7 @@ from PIL import Image, ImageGrab
 from groq import Groq
 
 from core.config import GROQ_API_KEY, GROQ_TIMEOUT, VISION_ENABLED, VISION_MODEL, VISION_MAX_IMAGE_MB
-from core.errors import LLMError
+from core.errors import SkillError
 
 logger = logging.getLogger("jarvis.vision")
 
@@ -17,7 +17,7 @@ logger = logging.getLogger("jarvis.vision")
 def _encode_image(path: Path) -> str:
     size_mb = path.stat().st_size / 1024 / 1024
     if size_mb > VISION_MAX_IMAGE_MB:
-        raise ValueError(f"Imagem acima do limite de {VISION_MAX_IMAGE_MB:.0f} MB.")
+        raise SkillError(f"Imagem acima do limite de {VISION_MAX_IMAGE_MB:.0f} MB.")
     data = base64.b64encode(path.read_bytes()).decode("ascii")
     suffix = path.suffix.lower()
     mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}.get(suffix, "image/png")
@@ -26,12 +26,12 @@ def _encode_image(path: Path) -> str:
 
 def analisar_imagem(path: str, pergunta: str = "Descreva o que há nesta imagem.") -> str:
     if not VISION_ENABLED:
-        return "A visão do NEXUS está desativada."
+        raise SkillError("A visão do NEXUS está desativada.")
     if not GROQ_API_KEY:
-        return "A análise visual exige uma GROQ_API_KEY configurada."
+        raise SkillError("A análise visual exige uma GROQ_API_KEY configurada.")
     image_path = Path(path).expanduser().resolve()
     if not image_path.is_file():
-        return f"Não encontrei a imagem: {path}"
+        raise SkillError(f"Não encontrei a imagem: {path}")
     client = Groq(api_key=GROQ_API_KEY, timeout=GROQ_TIMEOUT)
     response = client.chat.completions.create(
         model=VISION_MODEL,
@@ -46,7 +46,9 @@ def analisar_imagem(path: str, pergunta: str = "Descreva o que há nesta imagem.
         max_completion_tokens=800,
     )
     content = response.choices[0].message.content
-    return content.strip() if content else "Não consegui interpretar a imagem."
+    if not content:
+        raise SkillError("Não consegui interpretar a imagem.")
+    return content.strip()
 
 
 def capturar_tela(temp_path: Path) -> Path:

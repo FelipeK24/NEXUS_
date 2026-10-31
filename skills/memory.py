@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from core import interpreter
+from core.errors import SkillError
 from core.memory import memory
 
 
@@ -13,10 +14,10 @@ def lembrar(key: str, value: str) -> str:
     key = key.strip()
     value = value.strip()
     if not key or not value:
-        return "Não consegui identificar o que devo lembrar."
+        raise SkillError("Não consegui identificar o que devo lembrar.")
     existed = memory.has(key)
     if not memory.remember(key, value):
-        return "Não consegui salvar essa informação."
+        raise SkillError("Não consegui salvar essa informação.")
     if existed:
         return f"Entendido. Atualizei minha memória: {key} é {value}."
     return f"Entendido. Vou lembrar que {key} é {value}."
@@ -25,20 +26,20 @@ def lembrar(key: str, value: str) -> str:
 def esquecer(key: str) -> str:
     key = key.strip()
     if not key:
-        return "Não consegui identificar o que devo esquecer."
+        raise SkillError("Não consegui identificar o que devo esquecer.")
     if memory.forget(key):
         return f"Esqueci a informação sobre {key}."
     found = memory.find_relevant(key)
     if found:
         found_key, _ = found
-        return f"Não encontrei exatamente '{key}', mas encontrei uma memória sobre '{found_key}'."
-    return f"Não encontrei nenhuma memória sobre {key}."
+        raise SkillError(f"Não encontrei exatamente '{key}', mas encontrei uma memória sobre '{found_key}'.")
+    raise SkillError(f"Não encontrei nenhuma memória sobre {key}.")
 
 
 def consultar_memoria(key: str) -> str:
     key = key.strip()
     if not key:
-        return "Não consegui identificar o que devo consultar."
+        raise SkillError("Não consegui identificar o que devo consultar.")
     value = memory.recall(key)
     if value is not None:
         return f"Lembro que {key} é {value}."
@@ -51,5 +52,5 @@ def consultar_memoria(key: str) -> str:
 
 def apagar_toda_memoria() -> str:
     if not memory.clear():
-        return "Não consegui apagar toda a memória persistente."
+        raise SkillError("Não consegui apagar toda a memória persistente.")
     return "Toda a minha memória persistente foi apagada."

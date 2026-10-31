@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 
 from core.browser import browser
 from core.config import SITES, SITES_FILE
+from core.errors import SkillError
 from core.web import pesquisar_web
 
 
@@ -45,74 +46,74 @@ def abrir(target: str) -> str:
     try:
         return browser.open(_normalize_url(target))
     except Exception as exc:
-        return f"Não consegui abrir o site: {exc}"
+        raise SkillError(f"Não consegui abrir o site: {exc}") from exc
 
 
 def ler_pagina() -> str:
     try:
         return browser.read()
     except Exception as exc:
-        return f"Não consegui ler a página atual: {exc}"
+        raise SkillError(f"Não consegui ler a página atual: {exc}") from exc
 
 
 def voltar() -> str:
     try:
         return browser.back()
     except Exception as exc:
-        return f"Não consegui voltar no navegador: {exc}"
+        raise SkillError(f"Não consegui voltar no navegador: {exc}") from exc
 
 
 def avancar() -> str:
     try:
         return browser.forward()
     except Exception as exc:
-        return f"Não consegui avançar no navegador: {exc}"
+        raise SkillError(f"Não consegui avançar no navegador: {exc}") from exc
 
 
 def atualizar() -> str:
     try:
         return browser.refresh()
     except Exception as exc:
-        return f"Não consegui atualizar a página: {exc}"
+        raise SkillError(f"Não consegui atualizar a página: {exc}") from exc
 
 
 def listar_abas() -> str:
     try:
         return browser.tabs()
     except Exception as exc:
-        return f"Não consegui listar as abas: {exc}"
+        raise SkillError(f"Não consegui listar as abas: {exc}") from exc
 
 
 def fechar_navegador() -> str:
     try:
         return browser.close()
     except Exception as exc:
-        return f"Não consegui fechar o navegador: {exc}"
+        raise SkillError(f"Não consegui fechar o navegador: {exc}") from exc
 
 
 def screenshot(path: str = "data/browser_screenshot.png") -> str:
     try:
         return browser.screenshot(path)
     except Exception as exc:
-        return f"Não consegui salvar o screenshot: {exc}"
+        raise SkillError(f"Não consegui salvar o screenshot: {exc}") from exc
 
 
 def clicar(selector: str) -> str:
     try:
         return browser.click(selector)
     except Exception as exc:
-        return f"Não consegui clicar nesse elemento: {exc}"
+        raise SkillError(f"Não consegui clicar nesse elemento: {exc}") from exc
 
 
 def preencher(selector: str, content: str) -> str:
     try:
         return browser.type_text(selector, content)
     except Exception as exc:
-        return f"Não consegui preencher esse campo: {exc}"
+        raise SkillError(f"Não consegui preencher esse campo: {exc}") from exc
 
 
 def enviar(selector: str) -> str:
     try:
         return browser.submit(selector)
     except Exception as exc:
-        return f"Não consegui enviar o formulário: {exc}"
+        raise SkillError(f"Não consegui enviar o formulário: {exc}") from exc

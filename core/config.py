@@ -78,6 +78,11 @@ TEXT_ONLY = os.getenv("TEXT_ONLY", "false").lower() in {"1", "true", "yes", "on"
 PANEL_ENABLED = os.getenv("PANEL_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
 PANEL_HOST = os.getenv("PANEL_HOST", "127.0.0.1").strip()
 PANEL_PORT = int(os.getenv("PANEL_PORT", "8765"))
+PANEL_TOKEN = os.getenv("PANEL_TOKEN", "").strip()
+WEBSOCKET_ENABLED = os.getenv("WEBSOCKET_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
+WEBSOCKET_HOST = os.getenv("WEBSOCKET_HOST", "127.0.0.1").strip()
+WEBSOCKET_PORT = int(os.getenv("WEBSOCKET_PORT", "8767"))
+WEBSOCKET_PUBLIC_URL = os.getenv("WEBSOCKET_PUBLIC_URL", "").strip()
 
 # NEXUS 6.0 - Web e navegador
 WEB_SEARCH_ENGINE = os.getenv("WEB_SEARCH_ENGINE", "bing").strip().lower()
@@ -94,11 +99,8 @@ TASKS_FILE = DATA_DIR / "tasks.json"
 CONTACTS_FILE = DATA_DIR / "contacts.json"
 GOOGLE_CREDENTIALS_FILE = Path(os.getenv("GOOGLE_CREDENTIALS_FILE", str(DATA_DIR / "google_credentials.json"))).resolve()
 GOOGLE_TOKEN_FILE = Path(os.getenv("GOOGLE_TOKEN_FILE", str(DATA_DIR / "google_token.json"))).resolve()
-GOOGLE_GMAIL_TOKEN_FILE = Path(os.getenv("GOOGLE_GMAIL_TOKEN_FILE", str(DATA_DIR / "google_gmail_token.json"))).resolve()
-GOOGLE_TASKS_TOKEN_FILE = Path(os.getenv("GOOGLE_TASKS_TOKEN_FILE", str(DATA_DIR / "google_tasks_token.json"))).resolve()
 GOOGLE_ENABLED = os.getenv("GOOGLE_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
 GOOGLE_TIMEZONE = os.getenv("GOOGLE_TIMEZONE", "America/Sao_Paulo").strip()
-GMAIL_MAX_RESULTS = int(os.getenv("GMAIL_MAX_RESULTS", "10"))
 VISION_ENABLED = os.getenv("VISION_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
 VISION_MODEL = os.getenv("VISION_MODEL", "qwen/qwen3.6-27b").strip()
 VISION_MAX_IMAGE_MB = float(os.getenv("VISION_MAX_IMAGE_MB", "20"))
@@ -106,10 +108,6 @@ API_ENABLED = os.getenv("API_ENABLED", "false").lower() in {"1", "true", "yes", 
 API_HOST = os.getenv("API_HOST", "127.0.0.1").strip()
 API_PORT = int(os.getenv("API_PORT", "8766"))
 API_TOKEN = os.getenv("API_TOKEN", "").strip()
-REMINDERS_FILE = DATA_DIR / "reminders.json"
-REMINDER_POLL_SECONDS = float(os.getenv("REMINDER_POLL_SECONDS", "2"))
-REMINDER_SPEAK = os.getenv("REMINDER_SPEAK", "true").lower() in {"1", "true", "yes", "on"}
-
 SMART_HOME_PROVIDER = os.getenv("SMART_HOME_PROVIDER", "none").strip().lower()
 HOME_ASSISTANT_URL = os.getenv("HOME_ASSISTANT_URL", "").strip().rstrip("/")
 HOME_ASSISTANT_TOKEN = os.getenv("HOME_ASSISTANT_TOKEN", "").strip()

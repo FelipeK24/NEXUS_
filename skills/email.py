@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from core.config import CONTACTS_FILE
+from core.errors import SkillError
 from extensions.google_workspace import google_workspace
 
 
@@ -25,5 +26,8 @@ def resolve_recipient(value: str) -> str:
 def enviar_email(to: str, subject: str, body: str) -> str:
     recipient = resolve_recipient(to)
     if "@" not in recipient:
-        return "Não encontrei um endereço de e-mail válido para esse contato. Configure data/contacts.json ou informe o e-mail diretamente."
-    return google_workspace.send_email(recipient, subject, body)
+        raise SkillError("Não encontrei um endereço de e-mail válido para esse contato. Configure data/contacts.json ou informe o e-mail diretamente.")
+    try:
+        return google_workspace.send_email(recipient, subject, body)
+    except RuntimeError as exc:
+        raise SkillError(str(exc)) from exc

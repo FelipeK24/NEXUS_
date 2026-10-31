@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 from core.config import FILE_ALLOWED_ROOTS, FILE_SEARCH_LIMIT
+from core.errors import SkillError
 
 
 def _expand_path(value: str) -> Path:
@@ -58,7 +59,7 @@ def listar_arquivos(path: str = "downloads") -> str:
     try:
         folder = resolve_safe_path(path)
         if not folder.is_dir():
-            return f"A pasta {path} não existe."
+            raise SkillError(f"A pasta {path} não existe.")
         entries = sorted(folder.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
         if not entries:
             return f"A pasta {folder.name} está vazia."
@@ -70,14 +71,14 @@ def listar_arquivos(path: str = "downloads") -> str:
         suffix = f" ... e mais {extra}." if extra > 0 else "."
         return f"Conteúdo de {folder}:\n" + "\n".join(lines) + suffix
     except ValueError as exc:
-        return str(exc)
+        raise SkillError(str(exc)) from exc
     except OSError as exc:
-        return f"Não consegui listar a pasta: {exc}"
+        raise SkillError(f"Não consegui listar a pasta: {exc}") from exc
 
 
 def encontrar_arquivo(query: str, path: str = "") -> str:
     if not query.strip():
-        return "Não recebi o nome ou termo para procurar."
+        raise SkillError("Não recebi o nome ou termo para procurar.")
     try:
         roots = [resolve_safe_path(path)] if path.strip() else [Path(v).resolve() for v in FILE_ALLOWED_ROOTS.values()]
         needle = query.strip().lower()
@@ -97,12 +98,12 @@ def encontrar_arquivo(query: str, path: str = "") -> str:
             if len(matches) >= FILE_SEARCH_LIMIT:
                 break
         if not matches:
-            return f"Não encontrei arquivos que correspondam a '{query}'."
+            raise SkillError(f"Não encontrei arquivos que correspondam a '{query}'.")
         return "Arquivos encontrados:\n" + "\n".join(str(p) for p in matches)
     except ValueError as exc:
-        return str(exc)
+        raise SkillError(str(exc)) from exc
     except OSError as exc:
-        return f"Não consegui procurar os arquivos: {exc}"
+        raise SkillError(f"Não consegui procurar os arquivos: {exc}") from exc
 
 
 def criar_pasta(path: str) -> str:
@@ -111,9 +112,9 @@ def criar_pasta(path: str) -> str:
         folder.mkdir(parents=True, exist_ok=True)
         return f"Pasta criada: {folder}"
     except ValueError as exc:
-        return str(exc)
+        raise SkillError(str(exc)) from exc
     except OSError as exc:
-        return f"Não consegui criar a pasta: {exc}"
+        raise SkillError(f"Não consegui criar a pasta: {exc}") from exc
 
 
 def mover_arquivo(source: str, destination: str) -> str:
@@ -126,16 +127,16 @@ def mover_arquivo(source: str, destination: str) -> str:
                 raise
         dst = resolve_safe_path(destination, allow_missing=True)
         if not src.is_file():
-            return f"O arquivo de origem não existe: {src}"
+            raise SkillError(f"O arquivo de origem não existe: {src}")
         if dst.is_dir():
             dst = dst / src.name
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(src), str(dst))
         return f"Movi '{src.name}' para '{dst}'."
     except ValueError as exc:
-        return str(exc)
+        raise SkillError(str(exc)) from exc
     except OSError as exc:
-        return f"Não consegui mover o arquivo: {exc}"
+        raise SkillError(f"Não consegui mover o arquivo: {exc}") from exc
 
 
 def excluir_arquivo(path: str) -> str:
@@ -147,13 +148,13 @@ def excluir_arquivo(path: str) -> str:
             if target is None:
                 raise
         if not target.is_file():
-            return f"O arquivo não existe: {target}"
+            raise SkillError(f"O arquivo não existe: {target}")
         target.unlink()
         return f"Arquivo excluído: {target.name}."
     except ValueError as exc:
-        return str(exc)
+        raise SkillError(str(exc)) from exc
     except OSError as exc:
-        return f"Não consegui excluir o arquivo: {exc}"
+        raise SkillError(f"Não consegui excluir o arquivo: {exc}") from exc
 
 
 def abrir_arquivo(path: str) -> str:
@@ -164,13 +165,13 @@ def abrir_arquivo(path: str) -> str:
         else:
             target = resolve_safe_path(raw)
         if target is None or not target.is_file():
-            return f"O arquivo não existe: {raw}"
+            raise SkillError(f"O arquivo não existe: {raw}")
         if os.name != "nt":
             subprocess.Popen(["xdg-open", str(target)])
         else:
             os.startfile(str(target))
         return f"Abrindo {target.name}."
     except ValueError as exc:
-        return str(exc)
+        raise SkillError(str(exc)) from exc
     except OSError as exc:
-        return f"Não consegui abrir o arquivo: {exc}"
+        raise SkillError(f"Não consegui abrir o arquivo: {exc}") from exc

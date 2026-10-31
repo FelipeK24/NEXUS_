@@ -9,6 +9,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from core.config import WEB_REQUEST_TIMEOUT, WEB_SEARCH_ENGINE, WEB_SEARCH_LIMIT
+from core.errors import SkillError
 
 logger = logging.getLogger("jarvis.web")
 
@@ -92,7 +93,7 @@ def _search_duckduckgo(query: str) -> list[SearchResult]:
 def pesquisar_web(query: str) -> str:
     query = query.strip()
     if not query:
-        return "Não recebi o que devo pesquisar."
+        raise SkillError("Não recebi o que devo pesquisar.")
 
     engines = [WEB_SEARCH_ENGINE.lower().strip(), "bing", "duckduckgo"]
     seen: set[str] = set()
@@ -117,7 +118,7 @@ def pesquisar_web(query: str) -> str:
     if not results:
         if last_error:
             logger.error("Todas as pesquisas web falharam: %s", last_error)
-        return "Não consegui fazer a pesquisa na internet agora."
+        raise SkillError("Não consegui fazer a pesquisa na internet agora.")
 
     lines = [f"Resultados para: {query}"]
     for index, result in enumerate(results, start=1):

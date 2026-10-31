@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 from core.config import APPLICATIONS_FILE, APPLICATIONS, PROCESS_NAMES
+from core.errors import SkillError
 
 
 def _load_applications() -> dict[str, dict[str, str]]:
@@ -29,15 +30,15 @@ def abrir_aplicacao(application: str) -> str:
     key = application.strip().lower()
     entry = _entry(key)
     if entry is None:
-        return f"O aplicativo '{key}' não está cadastrado."
+        raise SkillError(f"O aplicativo '{key}' não está cadastrado.")
     path = os.path.expandvars(os.path.expanduser(entry.get("path", "")))
     if not path or not os.path.exists(path):
-        return f"Não encontrei o caminho autorizado para {key}."
+        raise SkillError(f"Não encontrei o caminho autorizado para {key}.")
     try:
         subprocess.Popen([path], shell=False)
         return f"Abrindo {key}."
     except OSError as exc:
-        return f"Não consegui abrir {key}: {exc}"
+        raise SkillError(f"Não consegui abrir {key}: {exc}") from exc
 
 
 def fechar_aplicacao(application: str) -> str:
@@ -45,7 +46,7 @@ def fechar_aplicacao(application: str) -> str:
     entry = _entry(key)
     process = (entry or {}).get("process") or PROCESS_NAMES.get(key)
     if not process:
-        return f"O processo de {key} não está cadastrado."
+        raise SkillError(f"O processo de {key} não está cadastrado.")
     try:
         result = subprocess.run(
             ["taskkill", "/IM", process, "/T", "/F"],
@@ -55,6 +56,6 @@ def fechar_aplicacao(application: str) -> str:
         )
         if result.returncode == 0:
             return f"Fechei {key}."
-        return f"Não encontrei {key} em execução."
+        raise SkillError(f"Não encontrei {key} em execução.")
     except OSError as exc:
-        return f"Não consegui fechar {key}: {exc}"
+        raise SkillError(f"Não consegui fechar {key}: {exc}") from exc

@@ -115,6 +115,8 @@ Assim o NEXUS pode exigir LOCK/UNLOCK e confirmação.
 
 Uma Skill deve fazer uma coisa bem definida.
 
+O Dispatcher valida os parâmetros recebidos antes da chamada. Cada Skill é executada no máximo uma vez por comando. Para falhas esperadas, lance `SkillError` com uma mensagem segura para o usuário; exceções inesperadas são registradas no log e não têm seus detalhes internos enviados ao usuário. Uma string retornada pela Skill representa uma execução concluída, mesmo quando descreve um resultado vazio, como não haver tarefas pendentes.
+
 Exemplos:
 
 ```text

@@ -5,6 +5,7 @@ import webbrowser
 from urllib.parse import quote_plus
 
 from core.config import SITES
+from core.errors import SkillError
 
 
 def _volume_key(code: int) -> None:
@@ -31,20 +32,20 @@ def controlar_sistema(action: str, target: str = "", query: str = "") -> str:
     if action == "open_site":
         url = SITES.get(target)
         if not url:
-            return "Esse site não está na lista autorizada."
+            raise SkillError("Esse site não está na lista autorizada.")
         webbrowser.open(url)
         return f"Abrindo {target}."
 
     if action == "google_search":
         if not query.strip():
-            return "Não recebi o que devo pesquisar."
+            raise SkillError("Não recebi o que devo pesquisar.")
         webbrowser.open(f"https://www.google.com/search?q={quote_plus(query)}")
         return f"Pesquisando por {query}."
 
     if action == "youtube_search":
         if not query.strip():
-            return "Não recebi o que devo pesquisar no YouTube."
+            raise SkillError("Não recebi o que devo pesquisar no YouTube.")
         webbrowser.open(f"https://www.youtube.com/results?search_query={quote_plus(query)}")
         return f"Pesquisando no YouTube por {query}."
 
-    return "Não reconheci esse controle do sistema."
+    raise SkillError("Não reconheci esse controle do sistema.")

@@ -6,6 +6,7 @@ from pathlib import Path
 import psutil
 
 from core.config import PROCESS_ALLOWLIST_PATH, PROCESS_LIST_LIMIT
+from core.errors import SkillError
 
 _PROTECTED = {
     "system",
@@ -41,7 +42,7 @@ def listar_processos() -> str:
     rows.sort(reverse=True)
     rows = rows[:PROCESS_LIST_LIMIT]
     if not rows:
-        return "Não consegui obter os processos."
+        raise SkillError("Não consegui obter os processos.")
     return "Processos por uso de memória:\n" + "\n".join(
         f"PID {pid} | {name} | {memory:.1f} MB" for memory, pid, name in rows
     )
@@ -53,9 +54,9 @@ def fechar_processo(process_name: str) -> str:
         target += ".exe"
     allowlist = _load_allowlist()
     if target not in allowlist:
-        return f"O processo '{process_name}' não está na lista de processos autorizados."
+        raise SkillError(f"O processo '{process_name}' não está na lista de processos autorizados.")
     if target in _PROTECTED:
-        return "Esse processo é protegido e não pode ser encerrado pelo NEXUS."
+        raise SkillError("Esse processo é protegido e não pode ser encerrado pelo NEXUS.")
 
     closed = 0
     for proc in psutil.process_iter(["pid", "name"]):
@@ -69,5 +70,5 @@ def fechar_processo(process_name: str) -> str:
             continue
 
     if closed == 0:
-        return f"Não encontrei o processo '{process_name}' em execução."
+        raise SkillError(f"Não encontrei o processo '{process_name}' em execução.")
     return f"Solicitei o encerramento de {closed} processo(s) '{process_name}'."

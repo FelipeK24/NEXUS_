@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import logging
+import inspect
 from dataclasses import dataclass
 from typing import Any
 
 from core.command import Command
+from core.errors import SecurityError, SkillError
 from core.security import SecurityManager
 from core.skill import Skill
 from core.skill_registry import SkillRegistry
-from core.errors import SecurityError
-from skills import applications, calculator, files, memory as memory_skill, processes, spotify, system, system_control, time, web, email, calendar, tasks, vision, smart_home, gmail, google_tasks
-from core.reminders import reminder_manager
+from skills import applications, calculator, files, memory as memory_skill, processes, spotify, system, system_control, time, web, email, calendar, tasks, vision, smart_home
 
 logger = logging.getLogger("jarvis.dispatcher")
 
@@ -62,24 +62,13 @@ class Dispatcher:
             Skill("browser_click", web.clicar, "Clica em um elemento do navegador."),
             Skill("browser_type", web.preencher, "Preenche um campo do navegador."),
             Skill("web_action", web.enviar, "Executa uma ação web sensível."),
-            Skill("email_list", gmail.listar_emails, "Lista e-mails da caixa de entrada."),
-            Skill("email_search", gmail.pesquisar_emails, "Pesquisa e-mails no Gmail."),
-            Skill("email_read", gmail.ler_email, "Lê um e-mail específico."),
             Skill("email_send", email.enviar_email, "Envia um e-mail via Google Workspace."),
-            Skill("email_reply", gmail.responder_email, "Responde a um e-mail existente."),
             Skill("calendar_list", calendar.listar_agenda, "Consulta a agenda do Google Calendar."),
             Skill("calendar_create", calendar.criar_evento, "Cria um evento no Google Calendar."),
             Skill("task_add", tasks.adicionar_tarefa, "Cria uma tarefa local."),
             Skill("task_list", tasks.listar_tarefas, "Lista tarefas locais pendentes."),
             Skill("task_complete", tasks.concluir_tarefa, "Conclui uma tarefa local."),
             Skill("task_delete", tasks.excluir_tarefa, "Exclui uma tarefa local."),
-            Skill("google_task_add", google_tasks.adicionar_google_task, "Cria uma tarefa no Google Tasks."),
-            Skill("google_task_list", google_tasks.listar_google_tasks, "Lista tarefas do Google Tasks."),
-            Skill("google_task_complete", google_tasks.concluir_google_task, "Conclui uma tarefa do Google Tasks."),
-            Skill("google_task_delete", google_tasks.excluir_google_task, "Exclui uma tarefa do Google Tasks."),
-            Skill("reminder_add", reminder_manager.add, "Cria um lembrete local."),
-            Skill("reminder_list", reminder_manager.list_pending, "Lista lembretes pendentes."),
-            Skill("reminder_cancel", reminder_manager.cancel, "Cancela um lembrete."),
             Skill("vision_screen", vision.analisar_tela, "Analisa a tela do computador com visão da IA."),
             Skill("vision_image", vision.analisar_imagem, "Analisa uma imagem autorizada."),
             Skill("smart_home_action", smart_home.executar, "Executa uma ação de Smart Home quando habilitada."),
@@ -90,10 +79,36 @@ class Dispatcher:
     def register_skill(self, skill: Skill) -> None:
         self.registry.register(skill)
 
+    def can_dispatch(self, command: Command) -> bool:
+        """Return whether the command maps to a Skill with bindable parameters."""
+        if command.intent == "general_question":
+            return True
+        skill = self.registry.get(command.intent)
+        if skill is None:
+            return False
+        try:
+            signature = inspect.signature(skill.handler)
+        except (TypeError, ValueError):
+            return True
+        try:
+            signature.bind(**command.parameters)
+        except TypeError:
+            return False
+        return True
+
     def dispatch_result(self, command: Command, confirmation_callback=None) -> DispatchResult:
         if command.intent == "general_question":
             from core.interpreter import responder_pergunta
-            return DispatchResult(True, responder_pergunta(command.original_text), command.intent)
+            try:
+                response = responder_pergunta(command.original_text)
+            except Exception:
+                logger.exception("Erro respondendo pergunta geral.")
+                return DispatchResult(
+                    False,
+                    "Não consegui gerar uma resposta agora. Verifique a conexão com os provedores de IA.",
+                    command.intent,
+                )
+            return DispatchResult(True, response, command.intent)
 
         try:
             self.security.authorize(command, confirmation_callback=confirmation_callback)
@@ -105,20 +120,34 @@ class Dispatcher:
             return DispatchResult(False, "Ainda não possuo uma Skill para essa ação.", command.intent)
 
         try:
-            result = skill.handler(**command.parameters)
-        except TypeError:
+            signature = inspect.signature(skill.handler)
+        except (TypeError, ValueError):
+            signature = None
+
+        if signature is not None:
             try:
-                result = skill.handler()
-            except Exception as exc:
-                logger.exception("Erro executando intent=%s", command.intent)
-                return DispatchResult(False, f"Não consegui executar essa ação: {exc}", command.intent)
+                signature.bind(**command.parameters)
+            except TypeError as exc:
+                logger.warning("Parâmetros incompatíveis para intent=%s: %s", command.intent, exc)
+                return DispatchResult(
+                    False,
+                    "Não consegui executar essa ação: os parâmetros não correspondem à Skill.",
+                    command.intent,
+                )
+
+        try:
+            result = skill.handler(**command.parameters)
+        except SkillError as exc:
+            return DispatchResult(False, str(exc), command.intent)
         except Exception as exc:
             logger.exception("Erro executando intent=%s", command.intent)
-            return DispatchResult(False, f"Não consegui executar essa ação: {exc}", command.intent)
+            return DispatchResult(
+                False,
+                "Ocorreu uma falha interna ao executar essa ação. Consulte o log do NEXUS.",
+                command.intent,
+            )
 
-        response = str(result)
-        failed = response.startswith(("Não consegui", "Não encontrei", "Não recebi", "Não tenho", "Ainda não", "O caminho", "O arquivo", "O processo"))
-        return DispatchResult(not failed, response, command.intent)
+        return DispatchResult(True, str(result), command.intent)
 
     def dispatch_command(self, command: Command, confirmation_callback=None) -> str:
         return self.dispatch_result(command, confirmation_callback=confirmation_callback).response

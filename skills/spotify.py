@@ -6,6 +6,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from core.config import DATA_DIR, SPOTIFY_PLAYLISTS
+from core.errors import SkillError
 
 
 def _carregar_playlists() -> dict[str, str]:
@@ -28,7 +29,7 @@ def _carregar_playlists() -> dict[str, str]:
 def abrir_playlist(nome: str) -> str:
     nome = nome.strip()
     if not nome:
-        return "Não consegui identificar a playlist."
+        raise SkillError("Não consegui identificar a playlist.")
 
     chave = nome.lower()
     playlists = _carregar_playlists()

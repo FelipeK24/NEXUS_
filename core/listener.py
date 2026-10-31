@@ -56,6 +56,7 @@ def _get_whisper_model() -> WhisperModel:
             WHISPER_MODEL,
             device=WHISPER_DEVICE,
             compute_type=WHISPER_COMPUTE_TYPE,
+            local_files_only=True,
         )
     return _whisper_model
 

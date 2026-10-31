@@ -5,16 +5,15 @@ import logging
 import sys
 import threading
 
-from core.config import ASSISTANT_NAME, LOG_FILE, PANEL_ENABLED, PANEL_HOST, PANEL_PORT, TEXT_ONLY, API_ENABLED, API_HOST, API_PORT, API_TOKEN
+from core.config import ASSISTANT_NAME, LOG_FILE, PANEL_ENABLED, PANEL_HOST, PANEL_PORT, PANEL_TOKEN, TEXT_ONLY, API_ENABLED, API_HOST, API_PORT, API_TOKEN, WEBSOCKET_ENABLED, WEBSOCKET_HOST, WEBSOCKET_PORT, WEBSOCKET_PUBLIC_URL
 from core.dispatcher import Dispatcher
 from core.errors import SecurityError
-from core.interpreter import llm_name, registrar_nexus, registrar_usuario
+from core.interpreter import llm_name, obter_historico_conversa, registrar_nexus, registrar_usuario
 from core.planner import Planner
 from core.security import SecurityManager
 from core import listener, speaker
-from core.reminders import reminder_manager
-from core.config import REMINDER_SPEAK
 from core.panel import PanelServer
+from core.websocket_server import EventWebSocketServer
 from pathlib import Path
 
 
@@ -42,33 +41,6 @@ def voice_confirm_action(description: str) -> bool:
     speaker.falar(description + " Diga confirmar para continuar ou cancelar para interromper.")
     answer = listener.transcribe_command().lower().strip()
     return "confirmar" in answer or answer in {"sim", "sim, pode", "pode"}
-
-
-def notify_reminder(title: str, message: str) -> None:
-    try:
-        from winotify import Notification, audio
-
-        icon = str(Path(__file__).resolve().parent / "assets" / "nexus.ico")
-        toast = Notification(app_id=ASSISTANT_NAME, title=title, msg=message, icon=icon)
-        try:
-            toast.set_audio(audio.Default, loop=False)
-        except Exception:
-            pass
-        toast.build().show()
-    except Exception:
-        logging.getLogger("jarvis.main").exception("Falha ao mostrar notificação do Windows.")
-
-    if panel := _RUNTIME.get("panel"):
-        try:
-            panel.state.update(mode="lembrete", response=message)
-        except Exception:
-            pass
-
-    if REMINDER_SPEAK:
-        try:
-            speaker.falar(message)
-        except Exception:
-            logging.getLogger("jarvis.main").exception("Falha ao falar lembrete.")
 
 
 def run_text_mode(dispatcher: Dispatcher, planner: Planner, panel: PanelServer | None = None) -> None:
@@ -101,9 +73,6 @@ def run_text_mode(dispatcher: Dispatcher, planner: Planner, panel: PanelServer |
             panel=panel,
             confirmation_callback=confirm_action,
         )
-
-
-execution_lock = threading.RLock()
 
 
 def execute_text(
@@ -162,16 +131,19 @@ def run_voice_mode(dispatcher: Dispatcher, planner: Planner, panel: PanelServer 
             speaker.falar(message)
 
 
-_RUNTIME: dict[str, object] = {}
-
-
 def _build_runtime():
+    if API_ENABLED and not API_TOKEN:
+        raise RuntimeError("API_TOKEN precisa estar configurado quando API_ENABLED=true.")
+    if WEBSOCKET_ENABLED and not PANEL_ENABLED:
+        raise RuntimeError("PANEL_ENABLED precisa estar ativo quando WEBSOCKET_ENABLED=true.")
+
     security = SecurityManager()
     api = None
     security.set_confirmation_callback(confirm_action)
     dispatcher = Dispatcher(security)
     planner = Planner()
     panel = None
+    websocket = None
 
     web_dir = Path(__file__).resolve().parent / "panel"
     if PANEL_ENABLED:
@@ -196,13 +168,27 @@ def _build_runtime():
             web_dir=web_dir,
             host=PANEL_HOST,
             port=PANEL_PORT,
+            token=PANEL_TOKEN,
+            skills_provider=lambda: [
+                {"intent": skill.intent, "description": skill.description}
+                for skill in sorted(dispatcher.registry.list_skills(), key=lambda item: item.intent)
+            ],
+            history_provider=obter_historico_conversa,
+            websocket_enabled=WEBSOCKET_ENABLED,
+            websocket_port=WEBSOCKET_PORT,
+            websocket_public_url=WEBSOCKET_PUBLIC_URL,
         )
         holder["panel"] = panel
         panel.start()
 
-    _RUNTIME["panel"] = panel
-    reminder_manager.notify_callback = notify_reminder
-    reminder_manager.start()
+    if WEBSOCKET_ENABLED:
+        websocket = EventWebSocketServer(host=WEBSOCKET_HOST, port=WEBSOCKET_PORT, token=PANEL_TOKEN)
+        try:
+            websocket.start()
+        except Exception:
+            if panel is not None:
+                panel.stop()
+            raise
 
     if API_ENABLED:
         from core.api import NexusAPI
@@ -215,17 +201,22 @@ def _build_runtime():
             host=API_HOST,
             port=API_PORT,
             token=API_TOKEN,
+            skills_provider=lambda: [
+                {"intent": skill.intent, "description": skill.description}
+                for skill in sorted(dispatcher.registry.list_skills(), key=lambda item: item.intent)
+            ],
+            history_provider=obter_historico_conversa,
         )
         api.start()
 
-    return security, dispatcher, planner, panel, api
+    return security, dispatcher, planner, panel, api, websocket
 
 
 def run_tray_mode() -> None:
     from core.tray import NexusTray
 
     stop_event = threading.Event()
-    security, dispatcher, planner, panel, api = _build_runtime()
+    security, dispatcher, planner, panel, api, websocket = _build_runtime()
 
     def worker() -> None:
         run_voice_mode(
@@ -237,11 +228,12 @@ def run_tray_mode() -> None:
 
     def shutdown() -> None:
         stop_event.set()
-        reminder_manager.stop()
         if panel is not None:
             panel.stop()
         if api is not None:
             api.stop()
+        if websocket is not None:
+            websocket.stop()
 
     tray = NexusTray(
         assistant_name=ASSISTANT_NAME,
@@ -267,16 +259,24 @@ def main() -> None:
         run_tray_mode()
         return
 
-    security, dispatcher, planner, panel, api = _build_runtime()
+    security, dispatcher, planner, panel, api, websocket = _build_runtime()
 
     print(f"{ASSISTANT_NAME} iniciado.")
     print(f"IA atual: {llm_name()}")
     print("Modo de segurança: LOCK")
 
-    if args.text or TEXT_ONLY:
-        run_text_mode(dispatcher, planner, panel)
-    else:
-        run_voice_mode(dispatcher, planner, panel)
+    try:
+        if args.text or TEXT_ONLY:
+            run_text_mode(dispatcher, planner, panel)
+        else:
+            run_voice_mode(dispatcher, planner, panel)
+    finally:
+        if panel is not None:
+            panel.stop()
+        if api is not None:
+            api.stop()
+        if websocket is not None:
+            websocket.stop()
 
 
 if __name__ == "__main__":

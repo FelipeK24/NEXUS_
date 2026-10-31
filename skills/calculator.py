@@ -5,6 +5,8 @@ import operator
 import re
 from typing import Any
 
+from core.errors import SkillError
+
 _OPERATORS: dict[type[ast.operator], Any] = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
@@ -50,7 +52,7 @@ def calcular(expression: str) -> str:
     expression = re.sub(r"[^0-9+\-*/%.()\s]", "", expression)
     expression = expression.replace("%", "/100")
     if not expression or not re.search(r"\d", expression):
-        return "Não consegui identificar a conta."
+        raise SkillError("Não consegui identificar a conta.")
 
     try:
         tree = ast.parse(expression, mode="eval")
@@ -59,6 +61,6 @@ def calcular(expression: str) -> str:
             result = int(result)
         return f"O resultado é {result}."
     except ZeroDivisionError:
-        return "Não posso dividir por zero."
-    except Exception:
-        return "Não consegui calcular essa expressão com segurança."
+        raise SkillError("Não posso dividir por zero.")
+    except Exception as exc:
+        raise SkillError("Não consegui calcular essa expressão com segurança.") from exc

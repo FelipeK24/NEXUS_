@@ -48,24 +48,13 @@ ALLOWED_INTENTS = {
     "browser_click",
     "browser_type",
     "web_action",
-    "email_list",
-    "email_search",
-    "email_read",
     "email_send",
-    "email_reply",
     "calendar_list",
     "calendar_create",
     "task_add",
     "task_list",
     "task_complete",
     "task_delete",
-    "google_task_add",
-    "google_task_list",
-    "google_task_complete",
-    "google_task_delete",
-    "reminder_add",
-    "reminder_list",
-    "reminder_cancel",
     "vision_screen",
     "vision_image",
     "smart_home_action",
@@ -109,6 +98,13 @@ def registrar_nexus(resposta: str) -> None:
 
 def limpar_contexto() -> None:
     _context.clear()
+
+
+def obter_historico_conversa() -> list[dict[str, str]]:
+    return [
+        {"user": turn.user, "assistant": turn.assistant}
+        for turn in _context.get_turns()
+    ]
 
 
 def responder_pergunta(texto: str) -> str:
@@ -364,83 +360,17 @@ def _detect_browser_actions(text: str) -> Command | None:
 
 
 def _detect_email_calendar_tasks(text: str) -> Command | None:
-    # Gmail
-    if text in {
-        "liste meus emails",
-        "mostre meus emails",
-        "liste meus e mails",
-        "mostre meus e mails",
-        "quais emails eu tenho",
-        "quais emails novos eu tenho",
-        "quais sao meus emails novos",
-    }:
-        query = "in:inbox is:unread" if "novos" in text else "in:inbox"
-        return _command("email_list", text, query=query)
-
-    for prefix in (
-        "procure no gmail ",
-        "pesquise no gmail ",
-        "procure emails sobre ",
-        "pesquise emails sobre ",
-    ):
-        if text.startswith(prefix):
-            query = text[len(prefix):].strip()
-            if query:
-                return _command("email_search", text, query=query)
-
-    for prefix in ("leia o email ", "leia o e-mail ", "abra o email ", "abra o e-mail "):
-        if text.startswith(prefix):
-            identifier = text[len(prefix):].strip()
-            if identifier:
-                return _command("email_read", text, identifier=identifier)
-
-    if text.startswith(("responda o email ", "responda o e-mail ")) and " dizendo " in text:
-        prefix = "responda o email " if text.startswith("responda o email ") else "responda o e-mail "
-        identifier, body = text[len(prefix):].split(" dizendo ", 1)
-        if identifier.strip() and body.strip():
-            return _command("email_reply", text, message_id=identifier.strip(), body=body.strip())
-
     if text.startswith(("envie um email para ", "envia um email para ", "mande um email para ", "mandar um email para ")):
         rest = text.split(" para ", 1)[1].strip()
         match = re.match(r"(.+?)\s+assunto\s+(.+?)\s+mensagem\s+(.+)$", rest)
         if match:
-            return _command(
-                "email_send",
-                text,
-                to=match.group(1).strip(),
-                subject=match.group(2).strip(),
-                body=match.group(3).strip(),
-            )
-
-    # Calendar
+            return _command("email_send", text, to=match.group(1).strip(), subject=match.group(2).strip(), body=match.group(3).strip())
     if text in {"mostre minha agenda", "liste minha agenda", "quais eventos eu tenho", "o que tenho na agenda", "me mostre minha agenda", "consulte minha agenda"}:
         return _command("calendar_list", text, days=7)
     if text.startswith(("agende ", "crie um evento ", "marque ")):
         match = re.match(r"^(?:agende|crie um evento|marque) (.+?) em (.+?) ate (.+)$", text)
         if match:
             return _command("calendar_create", text, summary=match.group(1).strip(), start=match.group(2).strip(), end=match.group(3).strip())
-
-    # Google Tasks
-    if text.startswith(("adicione uma tarefa no google tasks ", "adicione uma tarefa no google ", "crie uma tarefa no google tasks ")):
-        if text.startswith("adicione uma tarefa no google tasks "):
-            prefix = "adicione uma tarefa no google tasks "
-        elif text.startswith("crie uma tarefa no google tasks "):
-            prefix = "crie uma tarefa no google tasks "
-        else:
-            prefix = "adicione uma tarefa no google "
-        title = text[len(prefix):].strip()
-        if title:
-            return _command("google_task_add", text, title=title)
-    if text in {"liste minhas tarefas do google", "mostre minhas tarefas do google", "liste minhas tarefas do google tasks"}:
-        return _command("google_task_list", text)
-    for prefix in ("conclua a tarefa do google ", "conclua a tarefa no google "):
-        if text.startswith(prefix):
-            return _command("google_task_complete", text, identifier=text[len(prefix):].strip())
-    for prefix in ("exclua a tarefa do google ", "apague a tarefa do google "):
-        if text.startswith(prefix):
-            return _command("google_task_delete", text, identifier=text[len(prefix):].strip())
-
-    # Local tasks
     if text.startswith(("adicione uma tarefa ", "crie uma tarefa ", "anote uma tarefa ")):
         title = re.sub(r"^(?:adicione uma tarefa|crie uma tarefa|anote uma tarefa) ", "", text).strip()
         if title:
@@ -453,32 +383,6 @@ def _detect_email_calendar_tasks(text: str) -> Command | None:
     for prefix in ("exclua a tarefa ", "apague a tarefa "):
         if text.startswith(prefix):
             return _command("task_delete", text, identifier=text[len(prefix):].strip())
-
-    # Reminders
-    if text in {"liste meus lembretes", "mostre meus lembretes", "quais sao meus lembretes"}:
-        return _command("reminder_list", text)
-    for prefix in ("cancele o lembrete ", "cancele um lembrete ", "apague o lembrete "):
-        if text.startswith(prefix):
-            identifier = text[len(prefix):].strip()
-            if identifier:
-                return _command("reminder_cancel", text, identifier=identifier)
-    match = re.match(r"^me lembre de (.+?) (?:as|às) (.+)$", text)
-    if match:
-        message = match.group(1).strip()
-        when = "hoje às " + match.group(2).strip()
-        return _command("reminder_add", text, message=message, when=when)
-    match = re.match(r"^me lembre de (.+?) em (.+)$", text)
-    if match:
-        message = match.group(1).strip()
-        when = match.group(2).strip()
-        return _command("reminder_add", text, message=message, when=when)
-    match = re.match(r"^(?:crie|adicione) (?:um )?lembrete(?: de)? (.+?) para (.+)$", text)
-    if match:
-        return _command("reminder_add", text, message=match.group(1).strip(), when=match.group(2).strip())
-    match = re.match(r"^me lembre (.+?) as (.+)$", text)
-    if match:
-        return _command("reminder_add", text, message=match.group(1).strip(), when="hoje às " + match.group(2).strip())
-
     if text in {"analise minha tela", "analise a minha tela", "o que tem na minha tela", "o que aparece na minha tela", "leia minha tela"}:
         return _command("vision_screen", text, question="Descreva o que aparece na minha tela e destaque o que for relevante.")
     for prefix in ("analise a imagem ", "analise a imagem em ", "leia a imagem "):
@@ -629,9 +533,6 @@ def _validate_command(command: Command) -> Command:
         "browser_click": ("selector",),
         "browser_type": ("selector", "content"),
         "web_action": ("action", "selector"),
-        "email_search": ("query",),
-        "email_read": ("identifier",),
-        "email_reply": ("message_id", "body"),
     }
     if command.intent in string_params:
         cleaned: dict[str, str] = {}
@@ -652,16 +553,10 @@ def _validate_command(command: Command) -> Command:
 
     required_by_intent = {
         "email_send": ("to", "subject", "body"),
-        "email_reply": ("message_id", "body"),
         "calendar_create": ("summary", "start", "end"),
         "task_add": ("title",),
         "task_complete": ("identifier",),
         "task_delete": ("identifier",),
-        "google_task_add": ("title",),
-        "google_task_complete": ("identifier",),
-        "google_task_delete": ("identifier",),
-        "reminder_add": ("message", "when"),
-        "reminder_cancel": ("identifier",),
         "vision_image": ("path",),
         "smart_home_action": ("device", "action"),
     }
@@ -673,16 +568,7 @@ def _validate_command(command: Command) -> Command:
             cleaned[key] = str(cleaned[key]).strip()
         return Command(command.intent, cleaned, command.original_text)
 
-    if command.intent in {
-        "email_list",
-        "calendar_list",
-        "task_list",
-        "google_task_list",
-        "reminder_list",
-        "vision_screen",
-    }:
-        if command.intent == "email_list":
-            return Command("email_list", {"query": str(command.parameters.get("query", "in:inbox")).strip()}, command.original_text)
+    if command.intent in {"calendar_list", "task_list", "vision_screen"}:
         return command
 
     return command
